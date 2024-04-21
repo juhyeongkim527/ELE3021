@@ -90,7 +90,7 @@ sys_uptime(void)
   return xticks;
 }
 
-// my sys_getgpid
+// system call of Project 01
 // return grand-parent process id(gpid)
 int 
 sys_getgpid(void)
@@ -106,4 +106,58 @@ sys_getgpid(void)
 
   // return gpid
   return gparentproc->pid;
+}
+
+// system call of Project 02
+void
+sys_yield(void)
+{
+  yield();
+  return;
+}
+
+// return level of current process
+int
+sys_getlev(void)
+{
+  return getlev();
+}
+
+int
+sys_setpriority(void)
+{
+  int pid;
+  int priority;
+
+  // if argument pid or priority does not exist, return -1
+  if(argint(0, &pid) < 0 || argint(1, &priority) < 0){
+    return -1;
+  }
+  return setpriority(pid, priority);
+}
+
+int
+sys_setmonopoly(void)
+{
+  int pid;
+  int password;
+  // if argument pid or password does not exist, return -1
+  if(argint(0, &pid) < 0 || argint(1, &password) < 0){
+    return -1;
+  }
+  return setmonopoly(pid, password);
+}
+
+void
+sys_monopolize(void)
+{
+  monopolize();
+  return;
+}
+
+void
+sys_unmonopolize(void)
+{
+  unmonopolize();
+  return;
 }

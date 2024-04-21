@@ -1,3 +1,4 @@
+#include "param.h"
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -49,6 +50,10 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int queue_level;             // Queue level that process is in (e.g. L0 => 0, L1 => 1, ...)
+  int priority;                // Process priority (range of value is 0 ~ 10, the lower value has higher priority)
+  int run_ticks;               // Ticks that process has while running  
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -56,3 +61,11 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+// process queue (e.g. L0, L1, L2, L3, Moq)
+struct proc_queue {
+  int front;
+  int rear;
+  int time_quantum;
+  struct proc* proc_list[MAXQUEUESIZE];
+};

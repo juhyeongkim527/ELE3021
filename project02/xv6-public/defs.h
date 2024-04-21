@@ -10,6 +10,8 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+struct proc_queue;
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -121,6 +123,13 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 
+void            priorityboost(void);
+int             getlev(void);
+int             setpriority(int, int);
+int             setmonopoly(int, int);
+void            monopolize(void);
+void            unmonopolize(void);
+
 // swtch.S
 void            swtch(struct context**, struct context*);
 
@@ -188,3 +197,14 @@ void            clearpteu(pde_t *pgdir, char *uva);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+// queue.c
+void            init(struct proc_queue*, int);
+int             is_empty(struct proc_queue*);
+int             is_full(struct proc_queue*);
+void            enqueue(struct proc_queue*, struct proc*);
+void            dequeue(struct proc_queue*);
+struct proc*    front(struct proc_queue*);
+int             search(struct proc_queue*, struct proc*);
+void            remove(struct proc_queue*, int);
+int             size(struct proc_queue*);

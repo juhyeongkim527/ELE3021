@@ -20,10 +20,23 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
+// MLFQ, its index indicates queue level (e.g. mlfq[0] == L0)
+struct proc_queue mlfq[4];
+// Moq
+struct proc_queue moq;
+int is_moq = 0;
+extern uint ticks;
+
 void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  acquire(&ptable.lock);
+  for(int i = 0; i < 4; i++){
+    init(&mlfq[i], 2*i + 2);
+  }
+  init(&moq, 0);
+  release(&ptable.lock);
 }
 
 // Must be called with interrupts disabled
@@ -88,6 +101,11 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+
+  p->queue_level = 0;  
+  p->priority = 0;
+  p->run_ticks = 0;
+  enqueue(&mlfq[0], p);
 
   release(&ptable.lock);
 
@@ -332,13 +350,30 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+    
+    // moq
+    if(is_moq){
+      // cprintf("in moq\n");
+      // if moq is empty, call unmonopolize()
+      if(is_empty(&moq)){
+        unmonopolize();
+        release(&ptable.lock);
         continue;
+      }
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
+      p = front(&moq);
+      // dequeue ZOMBIE
+      if(p->state == ZOMBIE){
+        dequeue(&moq);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->state == SLEEPING  || p->state == UNUSED || p->state == EMBRYO){
+        release(&ptable.lock);
+        continue;
+      }
+
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
@@ -349,9 +384,196 @@ scheduler(void)
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
+      release(&ptable.lock);
+      continue;
+    }
+
+    // L0
+    if(!is_empty(&mlfq[0])){
+      // cprintf("in L0\n");
+      p = front(&mlfq[0]);
+
+      // dequeue ZOMBIE
+      if(p->state == ZOMBIE){
+        dequeue(&mlfq[0]);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->state == SLEEPING || p->state == UNUSED || p->state == EMBRYO){
+        dequeue(&mlfq[0]);
+        enqueue(&mlfq[0], p);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->run_ticks >= mlfq[0].time_quantum && p->state == RUNNABLE){
+        p->run_ticks = 0;
+        if(p->pid % 2 == 1){
+          p->queue_level = 1;
+          enqueue(&mlfq[1], p);
+        }
+        else{
+          p->queue_level = 2;
+          enqueue(&mlfq[2], p);
+        }
+        dequeue(&mlfq[0]);
+        release(&ptable.lock);
+        continue;
+      }
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+      release(&ptable.lock);
+      continue;
+    }
+
+    // L1
+    if(!is_empty(&mlfq[1])){
+      // cprintf("in L1\n");
+      p = front(&mlfq[1]);
+
+      // dequeue ZOMBIE
+      if(p->state == ZOMBIE){
+        dequeue(&mlfq[1]);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->state == SLEEPING || p->state == UNUSED || p->state == EMBRYO){
+        dequeue(&mlfq[1]);
+        enqueue(&mlfq[1], p);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->run_ticks >= mlfq[1].time_quantum && p->state == RUNNABLE){
+        p->run_ticks = 0;
+        p->queue_level = 3;
+        enqueue(&mlfq[3], p);
+        dequeue(&mlfq[1]);
+        release(&ptable.lock);
+        continue;
+      }
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+      release(&ptable.lock);
+      continue;
+      }
+
+    // L2
+    if(!is_empty(&mlfq[2])){
+      // cprintf("in L2\n");
+      p = front(&mlfq[2]);
+      
+      // dequeue ZOMBIE
+      if(p->state == ZOMBIE){
+        dequeue(&mlfq[2]);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->state == SLEEPING || p->state == UNUSED || p->state == EMBRYO){
+        dequeue(&mlfq[2]);
+        enqueue(&mlfq[2], p);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->run_ticks >= mlfq[2].time_quantum && p->state == RUNNABLE){
+        p->run_ticks = 0;
+        p->queue_level = 3;
+        enqueue(&mlfq[3], p);
+        dequeue(&mlfq[2]);
+        release(&ptable.lock);
+        continue;
+      }
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+        
+      release(&ptable.lock);
+      continue;
+    }
+
+    // L3
+    if(!is_empty(&mlfq[3])){
+      // cprintf("in L3\n");
+      p = (void*)0;
+      int highest_priority = -1;
+      for(int idx = mlfq[3].front; idx != mlfq[3].rear; idx = (idx + 1) % MAXQUEUESIZE){
+        if(mlfq[3].proc_list[idx]->priority > highest_priority){
+            p = mlfq[3].proc_list[idx];
+            highest_priority = mlfq[3].proc_list[idx]->priority;
+        }
+      }
+      
+      // dequeue ZOMBIE or UNUSED process
+      // if(p->state != RUNNABLE && p->state != RUNNING && p->state != SLEEPING){
+      if(p->state == ZOMBIE){
+        int idx = search(&mlfq[3], p);
+        remove(&mlfq[3], idx);
+        release(&ptable.lock);
+        continue;
+      }
+
+      if(p->state == SLEEPING || p->state == UNUSED || p->state == EMBRYO){
+        int idx = search(&mlfq[3], p);
+        remove(&mlfq[3], idx);
+        enqueue(&mlfq[3], p);
+        release(&ptable.lock);
+        continue;
+      }
+      
+      if(p->run_ticks >= mlfq[3].time_quantum){
+        p->run_ticks = 0;
+        if(p->priority > 0){
+          p->priority--;
+        }
+        release(&ptable.lock);
+        continue;
+      }
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+        
+      release(&ptable.lock);
+      continue;
     }
     release(&ptable.lock);
-
   }
 }
 
@@ -531,4 +753,122 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+void 
+priorityboost(void)
+{
+  if(is_moq) return;
+
+  acquire(&ptable.lock);
+  for(int i = 0; i < 4; i++){
+    init(&mlfq[i], 2*i + 2);
+  }
+  for(int i = 0; i < NPROC; i++){
+    if (ptable.proc[i].queue_level != 99 && ptable.proc[i].state == RUNNABLE){
+    // if (ptable.proc[i].queue_level != 99 && (ptable.proc[i].state == RUNNABLE || ptable.proc[i].state == SLEEPING)){
+      // cprintf("pid is %d\n", ptable.proc[i].pid);
+      ptable.proc[i].queue_level = 0;
+      ptable.proc[i].run_ticks = 0;
+      enqueue(&mlfq[0], &ptable.proc[i]);
+    }
+  }
+  release(&ptable.lock);
+
+  // for(int i = 1; i < 4; i++){
+  //   for(int idx = mlfq[i].front; idx != mlfq[i].rear; idx = (idx + 1) % MAXQUEUESIZE){      
+  //     cprintf("pid is %d\n", ptable.proc[i].pid);
+  //     if(mlfq[i].proc_list[idx]->state != ZOMBIE){
+  //       mlfq[i].proc_list[idx]->queue_level = 0;
+  //       mlfq[i].proc_list[idx]->run_ticks = 0;
+  //       enqueue(&mlfq[0], &ptable.proc[i]);
+  //     }
+  //   }
+  //   init(&mlfq[i], 2 * i + 2);
+  // }
+  // release(&ptable.lock);
+}
+
+int
+getlev(void)
+{
+  return myproc()->queue_level;
+}
+
+int 
+setpriority(int pid, int priority)
+{
+  if(priority < 0 || priority > 10){
+    return -2;
+  }
+  
+  acquire(&ptable.lock);
+  for(int i = 0; i < NPROC; i++){
+    if(ptable.proc[i].pid == pid){
+      ptable.proc[i].priority = priority;
+      release(&ptable.lock);
+      return 0;
+    }
+    if(i == NPROC-1 && ptable.proc[i].pid != pid){
+      release(&ptable.lock);
+      return -1;
+    }
+  }
+  return 0;
+}
+
+int 
+setmonopoly(int pid, int password)
+{
+  if(password != 2021093518){
+    return -2;
+  }
+  acquire(&ptable.lock);
+  if(myproc()->pid == pid){
+    release(&ptable.lock);
+    return -4;
+  }
+
+  int prev_process_index;
+  for(int i = 0; i < NPROC; i++){
+    // find and delete process in L0~L3
+    if(ptable.proc[i].pid == pid){
+      if(search(&moq, &ptable.proc[i]) != -1){
+        release(&ptable.lock);
+        return -3;
+      }
+      for(int j = 0; j < 4; j++){
+        if((prev_process_index = search(&mlfq[i], &ptable.proc[i])) != -1){
+          remove(&mlfq[i], prev_process_index);
+          break;
+        }
+      }
+      ptable.proc[i].queue_level = 99;
+      enqueue(&moq, &ptable.proc[i]);
+      release(&ptable.lock);
+      return size(&moq);
+    }
+    if(i == NPROC-1 && ptable.proc[i].pid != pid){
+      release(&ptable.lock);
+      return -1;
+    }
+  }
+  return -1;
+}
+
+void 
+monopolize(void)
+{
+  is_moq = 1;
+  return;
+}
+
+void 
+unmonopolize(void)
+{
+  is_moq = 0;
+  acquire(&tickslock);
+  ticks = 0;
+  release(&tickslock);
+  return;
 }

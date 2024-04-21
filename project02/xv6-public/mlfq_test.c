@@ -57,7 +57,7 @@ int fork_children3()
       int r = 0;
       if(p % 2 == 1)
       {
-        r = setmonopoly(p,"Your Student Number"); // input your student number
+        r = setmonopoly(p, 2021093518); // input your student number
         printf(1, "Number of processes in MoQ: %d\n",r);
       }
       if(r < 0)
