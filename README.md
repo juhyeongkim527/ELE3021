@@ -4,3 +4,5 @@
 ## Wiki
 
 - [project01](https://github.com/juhyeongkim527/ELE3021/wiki/project01)
+
+- [project02](https://github.com/juhyeongkim527/ELE3021/wiki/project02)
