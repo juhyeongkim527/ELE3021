@@ -7,9 +7,13 @@
 #include "x86.h"
 #include "elf.h"
 
+// exec()을 수행하면 master_thread(=process)와, 같은 master_thread를 가지는 모든 thread들이 정리되어야 하므로,
+// 호출한 process나 thread를 제외하고(curproc를 제외하고), 같은 pid를 가지는 나머지 process와 thread를 종료하는 함수 추가 
+// (ptable을 사용하므로 사용하기 편하도록 proc.c에 해당 함수 정의)
 int
 exec(char *path, char **argv)
 {
+  // cprintf("IN EXEC\n\n");
   char *s, *last;
   int i, off;
   uint argc, sz, sp, ustack[3+MAXARG+1];
@@ -18,6 +22,16 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
   struct proc *curproc = myproc();
+  
+  if(curproc->is_thread == 1){ // curproc가 thread인 경우 master_thread(=process)를 정리하면서 parent가 0이 되버리기 때문에,
+    curproc->parent = curproc->master_thread->parent; // 여기서 master_thread의 parent를 미리 저장
+    // exec() 이후 exit()가 호출되면 curproc->parent = curproc->master_thread->parent; 가 한번 더 호출되어
+    // 이렇게 되면 이미 exec()에서 master_thread(=thread)의 parent(=shell process)를 이미 할당했는데, 다시 한번 더 존재하지 않는 parent가 할당되서 오류가 발생하기 때문에
+    // 이를 막기 위해 is_thread = 0으로 초기화하여 exit()에서 한번 더 curproc->parent를 update하지 못하게 함
+    curproc->is_thread = 0; 
+  }
+
+  kill_all_threads_without_curproc(curproc); // exec()에서 실행할 curproc를 제외하고 master_thread(=process)와, 같은 master_thread를 가지는 모든 thread 정리
 
   begin_op();
 

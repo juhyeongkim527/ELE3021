@@ -49,6 +49,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int is_thread;               // 해당 proc이 thread 인지 아닌지 저장
+  thread_t tid;                // thread의 id를 저장
+  struct proc *master_thread;  // thread의 master_thread를 가리킴
+  void *retval;                // thread의 return value
 };
 
 // Process memory is laid out contiguously, low addresses first:
