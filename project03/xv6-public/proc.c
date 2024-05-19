@@ -253,10 +253,11 @@ exit(void)
 
   if(curproc->is_thread == 1){ // curproc가 thread인 경우 master_thread(=process)를 정리하면서 parent가 0이 되버리기 때문에,
     curproc->parent = curproc->master_thread->parent; // 여기서 master_thread의 parent를 미리 저장
-    curproc->is_thread = 0; // exit() 이후 같은 process나 thread의 exec()이 일어나는 경우는 없을 것이므로 안해줘도 된다고 생각하지만, 정확하지 않아서 일단 exec()에서 처럼 작성
+    // curproc->is_thread = 0; // exit() 이후 같은 process나 thread의 exec()이 일어나는 경우는 없을 것이므로 안해줘도 된다고 생각하지만, 정확하지 않아서 일단 exec()에서 처럼 작성
   }
-
+  // cprintf("tid : %d\n", curproc->tid);
   kill_all_threads_without_curproc(curproc); // curproc를 제외하고 master_thread(=process)와, 같은 master_thread를 가지는 모든 thread 정리
+  // cprintf("parent pid is : %d\n\n", curproc->parent->pid); // 추가했던 부분
 
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){

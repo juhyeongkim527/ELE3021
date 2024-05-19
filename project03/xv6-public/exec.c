@@ -30,8 +30,9 @@ exec(char *path, char **argv)
     // 이를 막기 위해 is_thread = 0으로 초기화하여 exit()에서 한번 더 curproc->parent를 update하지 못하게 함
     curproc->is_thread = 0; 
   }
-
+  // cprintf("tid : %d\n", curproc->tid);
   kill_all_threads_without_curproc(curproc); // exec()에서 실행할 curproc를 제외하고 master_thread(=process)와, 같은 master_thread를 가지는 모든 thread 정리
+  // cprintf("parent pid is : %d\n\n", curproc->parent->pid); // 추가했던 부분
 
   begin_op();
 
