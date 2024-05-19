@@ -186,7 +186,6 @@ UPROGS=\
 	_thread_exit\
 	_thread_kill\
 	_hello_thread\
-	_pthread_lock_linux\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -256,7 +255,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 EXTRA=\
 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
-	printf.c umalloc.c thread_test.c thread_exec.c thread_exit.c thread_kill.c hello_thread.c pthread_lock_linux.c\
+	printf.c umalloc.c thread_test.c thread_exec.c thread_exit.c thread_kill.c hello_thread.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
 	.gdbinit.tmpl gdbutil\
 
