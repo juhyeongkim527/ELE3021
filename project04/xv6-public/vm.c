@@ -318,7 +318,7 @@ copyuvm(pde_t *pgdir, uint sz)
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
-  char *mem;
+  // char *mem;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -327,16 +327,29 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
+
+    *pte = *pte & (~PTE_W); // Writeable flag를 disable (PTE_W의 bit를 반전시켜서 and 연산으로 Writeable bit만 0으로 설정)
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto bad;
-    memmove(mem, (char*)P2V(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      kfree(mem);
+    
+    // Child process는 새로운 page를 복사하여 할당받지 않기 때문에, 아래의 기존 코드 주석 처리
+    // if((mem = kalloc()) == 0)
+    //   goto bad;
+    // memmove(mem, (char*)P2V(pa), PGSIZE);
+    // if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+    //   kfree(mem);
+    //   goto bad;
+    // }
+
+    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0){ // pa는 이미 physical address이기 때문에 V2P(pa)로 argument 전달할 필요 X
+      // kfree((char*)pa); // kalloc을 여기서 해주지 않기 때문에 kfree를 해줄 필요 X
       goto bad;
     }
+
+    incr_refc(pa);  // copyuvm을 통해 page를 공유하였다면, 해당 page에 대한 참조 횟수를 증가
   }
+
+  lcr3(V2P(pgdir)); // Parent process의 page table entry의 flag가 변경되었기 때문에 CR3 레지스터에 새로운 pgdir을 업데이트시켜줌
   return d;
 
 bad:
@@ -383,6 +396,99 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
     va = va0 + PGSIZE;
   }
   return 0;
+}
+
+void 
+CoW_handler(void)
+{
+  uint va = rcr2(); // page fault가 발생한 가상 주소를 저장 (CR2 레지스터에 저장되어 있음)
+  if(va >= KERNBASE){ // page fault가 발생한 가상 주소가 잘못된 범위에 속해 있는지 확인 (uint는 unsigned 이므로 < 0 인 경우도 >= KERNBASE  조건으로 확인 가능)
+    panic("invalid virtual address");
+  }
+
+  pte_t *pte;
+
+  if((pte = walkpgdir(myproc()->pgdir, (void*)va, 0)) == 0){ // page fault가 발생한 가상 주소에 대한 page table entry를 pte에 저장
+      panic("address should exist");
+  }
+
+  uint pa = PTE_ADDR(*pte); // pte에서 physical page number를 저장
+
+  if(get_refc(pa) > 1){ // 참조 횟수가 1보다 큰 경우(처음 (N-1)개의 process에서 page fault 발생)
+    // 기존 copyuvm() 루틴과 동일하게 새로운 page를 할당하여 기존 page를 복사하는 과정 진행
+    char *mem;
+    if((mem = kalloc()) == 0){ // 새로운 page를 mem에 할당
+      panic("fail in kalloc");
+    }
+
+    memmove(mem, (char*)P2V(pa), PGSIZE); // 할당한 page(mem)에 기존에 공유하던 page를 복사하여 mapping시킴
+    
+    // memset(pte, 0, PGSIZE); // page의 복사본을 가져오므로 초기화할 필요 X
+    *pte = V2P(mem) | PTE_P | PTE_W | PTE_U; 
+    // page table entry를 새로 할당받고 복사한 mem으로 update하고, flag를 설정
+    // walkpgdir의 flag 설정을 참고(새로운 page를 할당하기 때문에)
+    decr_refc(pa); // 기존에 공유하던 page를 더이상 사용하지 않기 때문에 page 참조 횟수 감소
+  }
+  
+  else if(get_refc(pa) == 1){ // 참조 횟수가 1인 경우(마지막 process)
+    *pte = *pte | PTE_W; // page fault가 발생한 page table entry를 공유하지 않고 혼자 사용하기 때문에, Writeable flag만 다시 1으로 설정
+  }
+  lcr3(V2P(myproc()->pgdir)); // page table entry 변경으로 인해, TLB flush 후 CR3 레지스터 값 업데이트
+}
+
+int
+countvp(void)
+{
+  int count = 0;
+  pte_t *pte;
+
+  for(uint va = 0; va < myproc()->sz; va += PGSIZE){  
+    // 전체 virtual address 공간(KERNBASE)가 아닌 process가 현재 사용하는 virtual address 까지만 순회하기 위해 myproc()->sz 까지만 순회
+    if((pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0)
+      continue;
+    count++;
+  }
+
+  return count;
+
+  // uint va_range = PGROUNDUP(myproc()->sz);
+  // return (va_range / PGSIZE);
+}
+
+int
+countpp(void)
+{
+  int count = 0;
+  pte_t *pte;
+
+  for(uint va = 0; va < myproc()->sz; va += PGSIZE){  
+    // 전체 virtual address 공간(KERNBASE)가 아닌 process가 현재 사용하는 virtual address 까지만 순회하기 위해 myproc()->sz 까지만 순회
+    if((pte = walkpgdir(myproc()->pgdir, (void *)va, 0)) == 0)
+      continue;
+    if(!(*pte & PTE_P))
+      continue;
+    count++;
+  }
+
+  return count;
+}
+
+int
+countptp(void)
+{
+  int count = 0;
+  pde_t *pgdir = myproc()->pgdir;
+
+  if(*pgdir & PTE_P){
+    count++;  // page directory에 사용된 페이지도 count
+    for(int i = 0; i < NPDENTRIES; i++){
+      if(pgdir[i] & PTE_P){
+        count++;
+      }
+    }
+  }
+
+  return count;
 }
 
 //PAGEBREAK!

@@ -89,3 +89,27 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+int
+sys_countfp(void)
+{
+  return countfp();
+}
+
+int
+sys_countvp(void)
+{
+  return countvp();
+}
+
+int
+sys_countpp(void)
+{
+  return countpp();
+}
+
+int
+sys_countptp(void)
+{
+  return countptp();
+}

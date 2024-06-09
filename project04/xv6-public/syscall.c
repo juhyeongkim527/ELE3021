@@ -103,6 +103,10 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_countfp(void);
+extern int sys_countvp(void);
+extern int sys_countpp(void);
+extern int sys_countptp(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -126,6 +130,10 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_countfp] sys_countfp,
+[SYS_countvp] sys_countvp,
+[SYS_countpp] sys_countpp,
+[SYS_countptp] sys_countptp,
 };
 
 void

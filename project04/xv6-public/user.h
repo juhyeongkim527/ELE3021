@@ -23,6 +23,10 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int countfp(void);
+int countvp(void);
+int countpp(void);
+int countptp(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

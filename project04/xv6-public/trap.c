@@ -77,6 +77,9 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
+  case T_PGFLT:   // pagefault 발생 시 handler가 호출되도록 case 추가
+    CoW_handler();
+    break;
 
   //PAGEBREAK: 13
   default:
